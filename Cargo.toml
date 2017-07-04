@@ -1,0 +1,10 @@
+[package]
+name = "wcpe"
+version = "0.1.0"
+authors = ["Mitchell Kember <mk12360@gmail.com>"]
+
+[dependencies]
+chrono = "0.4"
+clap = "2.25.0"
+curl = "0.4.7"
+select = "0.4.1"
