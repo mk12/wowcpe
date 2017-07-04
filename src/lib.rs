@@ -16,10 +16,6 @@ use curl::easy::Easy;
 use std::error;
 use std::fmt;
 
-/// Abbreviations of the days of the week used on the WCPE website.
-const WEEKDAYS: [&'static str; 7] =
-    ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
-
 /// Request to look up what is playing on WCPE.
 pub struct Request {
     pub time: DateTime<Local>,
@@ -29,6 +25,7 @@ pub struct Request {
 pub struct Response {
     pub start_time: DateTime<Local>,
     pub end_time: DateTime<Local>,
+    pub composer: String,
     pub title: String,
     pub performers: String,
 }
@@ -36,6 +33,37 @@ pub struct Response {
 /// An error that occurs while processing a request.
 pub enum Error {
     CurlError(curl::Error),
+}
+
+/// Looks up what is playing on WCPE based on `request`.
+pub fn lookup(request: &Request) -> Result<Response, Error> {
+    let mut body = String::new();
+    let mut handle = Easy::new();
+    handle.url(&get_url(request.time))?;
+    // handle.write_function(|data| {
+    //     body = String::from_utf8(data.to_vec()).unwrap();
+    //     Ok(5)
+    // })?;
+    handle.perform()?;
+
+    Ok(Response {
+        start_time: request.time,
+        end_time: request.time,
+        composer: "".to_string(),
+        title: "".to_string(),
+        performers: "".to_string(),
+    })
+}
+
+const WEEKDAYS: [&'static str; 7] =
+    ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+
+fn get_url(time: DateTime<Local>) -> String {
+    let index = time.weekday().num_days_from_monday() as usize;
+    format!(
+        "http://theclassicalstation.org/playing_{}.shtml",
+        WEEKDAYS[index]
+    )
 }
 
 impl Error {
@@ -72,31 +100,4 @@ impl error::Error for Error {
     fn cause(&self) -> Option<&error::Error> {
         self.error().cause()
     }
-}
-
-/// Looks up what is playing on WCPE based on `request`.
-pub fn lookup(request: &Request) -> Result<Response, Error> {
-    let mut body = String::new();
-    let mut handle = Easy::new();
-    handle.url(&get_url(request.time))?;
-    handle.write_function(|data| {
-        body = String::from_utf8(data.to_vec()).unwrap();
-        Ok(())
-    })?;
-    handle.perform()?;
-
-    Ok(Response {
-        start_time: request.time,
-        end_time: request.time,
-        title: "".to_string(),
-        performers: "".to_string(),
-    })
-}
-
-fn get_url(time: DateTime<Local>) -> String {
-    let index = time.weekday().num_days_from_monday() as usize;
-    format!(
-        "http://theclassicalstation.org/playing_{}.shtml",
-        WEEKDAYS[index]
-    )
 }
