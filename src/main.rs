@@ -26,12 +26,16 @@ fn main() {
     let time = matches
         .value_of("time")
         .map(|arg| parse_time(arg).unwrap_or_else(|| invalid_arg(arg)))
-        .unwrap_or_else(Local::now);
+        .unwrap_or_else(current_time);
 
-    match wcpe::lookup(&wcpe::Request { time }) {
+    match wowcpe::lookup(&wowcpe::Request { time }) {
         Ok(response) => print_response(response),
         Err(err) => fail(err.description()),
     }
+}
+
+fn current_time() -> DateTime<Local> {
+    Local::now().with_nanosecond(0).unwrap()
 }
 
 fn parse_time(input: &str) -> Option<DateTime<Local>> {
