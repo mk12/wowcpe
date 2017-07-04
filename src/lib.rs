@@ -1,6 +1,8 @@
 // Copyright 2017 Mitchell Kember. Subject to the MIT License.
 
-///! # WCPE
+///! # WOWCPE
+///!
+///! "What's On WCPE?"
 ///!
 ///! Web scraper for WCPE (theclassicalstation.org).
 ///!

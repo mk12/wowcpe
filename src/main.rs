@@ -2,7 +2,7 @@
 
 extern crate chrono;
 extern crate clap;
-extern crate wcpe;
+extern crate wowcpe;
 
 use chrono::prelude::*;
 use clap::{Arg, App};
@@ -10,9 +10,8 @@ use std::error::Error;
 use std::io::Write;
 
 fn main() {
-    let matches = App::new("wcpe")
+    let matches = App::new("WOWCPE")
         .version("0.1.0")
-        .author("Mitchell Kember")
         .about("Show what is playing on WCPE - theclassicalstation.org")
         .arg(
             Arg::with_name("time")
@@ -56,7 +55,7 @@ fn parse_time(input: &str) -> Option<DateTime<Local>> {
         .and_then(|t| t.with_nanosecond(0))
 }
 
-fn print_response(r: wcpe::Response) {
+fn print_response(r: wowcpe::Response) {
     println!("Time        {} - {}", r.start_time.time(), r.end_time.time());
     println!("Composer    {}", r.composer);
     println!("Title       {}", r.title);
