@@ -4,10 +4,12 @@ extern crate chrono;
 extern crate clap;
 extern crate wowcpe;
 
-use chrono::prelude::*;
-use clap::{Arg, App};
+use chrono::{DateTime, Local, Timelike};
+use clap::{App, Arg};
 use std::error::Error;
 use std::io::Write;
+
+use wowcpe::{Request, Response};
 
 fn main() {
     let matches = App::new("WOWCPE")
@@ -23,13 +25,14 @@ fn main() {
         )
         .get_matches();
 
-    let time = matches
-        .value_of("time")
-        .map(|arg| parse_time(arg).unwrap_or_else(|| invalid_arg(arg)))
-        .unwrap_or_else(current_time);
+    let time = if let Some(arg) = matches.value_of("time") {
+        parse_time(arg).unwrap_or_else(|_| invalid_arg(arg))
+    } else {
+        current_time()
+    };
 
-    match wowcpe::lookup(&wowcpe::Request { time }) {
-        Ok(response) => print_response(response),
+    match wowcpe::lookup(&Request { time }) {
+        Ok(response) => print_response(&response),
         Err(err) => fail(err.description()),
     }
 }
@@ -38,29 +41,31 @@ fn current_time() -> DateTime<Local> {
     Local::now().with_nanosecond(0).unwrap()
 }
 
-fn parse_time(input: &str) -> Option<DateTime<Local>> {
+fn parse_time(input: &str) -> Result<DateTime<Local>, ()> {
     let input = input.trim();
-    let (hour, minute) = if let Some(index) = input.find(':') {
+    let (hour, minute) : (u32, u32) = if let Some(index) = input.find(':') {
         let (hh, colon_mm) = input.split_at(index);
         let mm = &colon_mm[1..];
-        match (hh.parse::<u32>(), mm.parse::<u32>()) {
+        match (hh.parse(), mm.parse()) {
             (Ok(hour), Ok(minute)) => (hour, minute),
-            _ => return None,
+            _ => return Err(()),
         }
-    } else if let Ok(hour) = input.parse::<u32>() {
+    } else if let Ok(hour) = input.parse() {
         (hour, 0)
     } else {
-        return None;
+        return Err(());
     };
 
     Local::now()
         .with_hour(hour)
         .and_then(|t| t.with_minute(minute))
         .and_then(|t| t.with_nanosecond(0))
+        .ok_or(())
 }
 
-fn print_response(r: wowcpe::Response) {
-    println!("Time        {} - {}", r.start_time.time(), r.end_time.time());
+fn print_response(r: &Response) {
+    println!("Program     {}", r.program);
+    println!("Time        {} - {}", r.start.time(), r.end.time());
     println!("Composer    {}", r.composer);
     println!("Title       {}", r.title);
     println!("Performers  {}", r.performers);

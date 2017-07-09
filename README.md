@@ -6,9 +6,9 @@ WOWCPE is a simple command-line tool for the classical radio station [WCPE][1].
 
 [1]: http://theclassicalstation.org/
 
-## Build
+## Install
 
-You will need to have [Cargo][2] installed. If you want to get the source code and make changes, clone this repository and run `cargo install`. Otherwise, just run `cargo install wowcpe` anywhere to download it from https://crates.io and install it.
+Install [Cargo][2] if you haven't already, and then run `cargo install wowcpe`.
 
 [2]: https://crates.io/
 
@@ -19,7 +19,7 @@ There are two ways to use WOWCPE:
 - `wowcpe`: Show what's playing on WCPE right now.
 - `wowcpe -t HH:MM`: Show what will be playing at the time `HH:MM`.
 
-Try `wowcpe --help` for more details..
+Try `wowcpe --help` for more details.
 
 ## Contributing
 
