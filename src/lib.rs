@@ -27,12 +27,14 @@ use std::result;
 use table_extract::Table;
 
 /// Request to look up what is playing on WCPE.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Request {
     /// The moment in time to look up.
     pub time: DateTime<Local>,
 }
 
 /// Information about a piece playing on WCPE.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Response {
     /// Name of the current program, e.g., "Sleepers, Awake!"
     pub program: String,
@@ -46,6 +48,8 @@ pub struct Response {
     pub title: String,
     /// Perfomers in the recording of the piece.
     pub performers: String,
+    /// Record label of the recording of the piece.
+    pub record_label: String,
 }
 
 quick_error!{
@@ -149,7 +153,8 @@ fn lookup_in_html(request: &Request, html: &str) -> Result<Response> {
         end_time,
         composer: extract("Composer"),
         title: extract("Title"),
-        performers: extract("Perfomers"),
+        performers: extract("Performers"),
+        record_label: extract("Record Label"),
     })
 }
 
@@ -225,9 +230,101 @@ mod test {
     }
 
     #[test]
-    fn test_lookup_in_html() {
-        let req = Request{ time: Local::now() };
+    fn test_eastern_eod() {
+        assert!(parse_eastern_time("00:00").unwrap() < eastern_eod());
+        assert!(parse_eastern_time("23:58").unwrap() < eastern_eod());
+        assert_eq!(parse_eastern_time("23:59").unwrap(), eastern_eod());
+    }
 
-        assert_eq!(Error::HtmlParse, lookup_in_html(&req, ""));
+    #[test]
+    fn test_lookup_in_html_parse_err() {
+        let request = Request { time: Local::now() };
+
+        assert!(lookup_in_html(&request, "").is_err());
+        assert!(lookup_in_html(&request, "<table></table>").is_err());
+        assert!(lookup_in_html(&request, "<table><tr></tr></table>").is_err());
+    }
+
+    const SAMPLE_HTML: &'static str = r#"
+<table>
+<tr>
+<th>
+<p>Program
+</th><th>
+<p>Start Time
+</th><th>
+<p>Composer
+</th><th>
+<p>Title
+</th><th>
+<p>Performers
+</th><th>
+<p>Record Label
+</th></tr>
+<tr>
+<td>Sleepers, Awake!</td>
+<td>00:01</td>
+<td>Respighi</td>
+<td>Church Windows</td>
+<td>Buffalo Philharmonic/Falletta</td>
+<td>Naxos</td></tr>
+<tr>
+<td></td>
+<td>00:27</td>
+<td>Handel</td>
+<td>Concerto Grosso in D, Op. 3 No. 6</td>
+<td>Concentus Musicus of Vienna/Harnoncourt</td>
+<td>MHS</td></tr>
+</table>
+"#;
+
+    #[test]
+    fn test_lookup_in_html_too_early() {
+        let request = Request { time: parse_eastern_time("00:00").unwrap() };
+        assert!(lookup_in_html(&request, SAMPLE_HTML).is_err());
+    }
+
+    #[test]
+    fn test_lookup_in_html_first() {
+        let expected = Response {
+            program: "Sleepers, Awake!".to_string(),
+            start_time: parse_eastern_time("00:01").unwrap(),
+            end_time: parse_eastern_time("00:27").unwrap(),
+            composer: "Respighi".to_string(),
+            title: "Church Windows".to_string(),
+            performers: "Buffalo Philharmonic/Falletta".to_string(),
+            record_label: "Naxos".to_string(),
+        };
+
+        let request = Request { time: parse_eastern_time("00:01").unwrap() };
+        assert_eq!(expected, lookup_in_html(&request, SAMPLE_HTML).unwrap());
+
+        let request = Request { time: parse_eastern_time("00:02").unwrap() };
+        assert_eq!(expected, lookup_in_html(&request, SAMPLE_HTML).unwrap());
+
+        let request = Request { time: parse_eastern_time("00:26").unwrap() };
+        assert_eq!(expected, lookup_in_html(&request, SAMPLE_HTML).unwrap());
+    }
+
+    #[test]
+    fn test_lookup_in_html_last() {
+        let expected = Response {
+            program: "Sleepers, Awake!".to_string(),
+            start_time: parse_eastern_time("00:27").unwrap(),
+            end_time: parse_eastern_time("23:59").unwrap(),
+            composer: "Handel".to_string(),
+            title: "Concerto Grosso in D, Op. 3 No. 6".to_string(),
+            performers: "Concentus Musicus of Vienna/Harnoncourt".to_string(),
+            record_label: "MHS".to_string(),
+        };
+
+        let request = Request { time: parse_eastern_time("00:27").unwrap() };
+        assert_eq!(expected, lookup_in_html(&request, SAMPLE_HTML).unwrap());
+
+        let request = Request { time: parse_eastern_time("00:28").unwrap() };
+        assert_eq!(expected, lookup_in_html(&request, SAMPLE_HTML).unwrap());
+
+        let request = Request { time: parse_eastern_time("23:59").unwrap() };
+        assert_eq!(expected, lookup_in_html(&request, SAMPLE_HTML).unwrap());
     }
 }

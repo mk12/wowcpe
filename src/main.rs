@@ -63,15 +63,16 @@ fn parse_time(input: &str) -> Option<DateTime<Local>> {
 }
 
 fn print_response(r: &Response) {
-    let fmt = "%k:%M %p";
+    let fmt = "%I:%M %p";
     let start = r.start_time.time().format(fmt);
     let end = r.end_time.time().format(fmt);
 
-    println!("Program     {}", r.program);
-    println!("Time        {} - {}", start, end);
-    println!("Composer    {}", r.composer);
-    println!("Title       {}", r.title);
-    println!("Performers  {}", r.performers);
+    println!("Program       {}", r.program);
+    println!("Time          {} - {}", start, end);
+    println!("Composer      {}", r.composer);
+    println!("Title         {}", r.title);
+    println!("Performers    {}", r.performers);
+    println!("Record Label  {}", r.record_label);
 }
 
 fn fail(message: &str) -> ! {
