@@ -5,10 +5,12 @@
 //! This crate provides a single function [`lookup`] to find out what is playing
 //! on the [classical radio station WCPE](https://theclassicalstation.org). It
 //! returns a [`Response`], which contains the title, composer, and other
-//! information about the piece.
+//! information about the piece. The WCPE website only exposes data for the
+//! past week, so [`Request`] times must be in that range.
 //!
 //! [`lookup`]: fn.lookup.html
 //! [`Response`]: struct.Response.html
+//! [`Request`]: struct.Request.html
 
 #[macro_use]
 extern crate quick_error;
@@ -19,8 +21,8 @@ extern crate curl;
 extern crate option_filter;
 extern crate table_extract;
 
-use chrono::{DateTime, Datelike, Local, Timelike, Utc};
-use chrono_tz::US::Eastern;
+use chrono::{DateTime, Datelike, Duration, Local, Timelike, Utc};
+use chrono_tz::US::{Eastern, Pacific};
 use curl::easy::Easy;
 use option_filter::OptionFilterExt;
 use std::result;
@@ -61,6 +63,9 @@ quick_error!{
             description(err.description())
             from()
         }
+        Unavailable {
+            description("Data for the given time is not available")
+        }
         HtmlParse {
             description("Failed to parse the HTML document")
         }
@@ -79,19 +84,35 @@ pub type Result<T> = result::Result<T, Error>;
 
 /// Looks up what is playing on WCPE based on `request`.
 ///
+/// Returns an error if `request.time` is not within the past week, since WCPE
+/// only provides data for that time frame.
+///
 /// This will download a page from `https://theclassicalstation.org` using
 /// `curl`, so it requires network access. Returns an error if `curl` fails or
 /// if extracting the desired information from the HTML fails.
 pub fn lookup(request: &Request) -> Result<Response> {
+    validate_request(request)?;
     let html = download(&get_url(request.time))?;
     lookup_in_html(request, &html)
+}
+
+fn validate_request(request: &Request) -> Result<()> {
+    let t = request.time;
+    let end_of_day = eastern_eod();
+    if t <= end_of_day - Duration::weeks(1) || t > end_of_day {
+        Err(Error::Unavailable)
+    } else {
+        Ok(())
+    }
 }
 
 const WEEKDAYS: [&'static str; 7] =
     ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 
 fn get_url(time: DateTime<Local>) -> String {
-    let index = time.weekday().num_days_from_monday() as usize;
+    let index = time.with_timezone(&Eastern)
+        .weekday()
+        .num_days_from_monday() as usize;
     let day = WEEKDAYS[index];
     format!("http://theclassicalstation.org/playing_{}.shtml", day)
 }
@@ -198,16 +219,64 @@ mod test {
     use chrono::TimeZone;
 
     #[test]
-    fn test_get_url() {
-        let monday = Local.ymd(2017, 7, 3).and_hms(0, 0, 0);
+    fn test_validate_request_ok() {
+        let time = Local::now();
+        assert!(validate_request(&Request { time }).is_ok());
+
+        let time = eastern_eod();
+        assert!(validate_request(&Request { time }).is_ok());
+
+        let time = eastern_eod() - Duration::weeks(1) + Duration::seconds(1);
+        assert!(validate_request(&Request { time }).is_ok());
+    }
+
+    #[test]
+    fn test_validate_request_err() {
+        let time = eastern_eod() + Duration::seconds(1);
+        assert!(validate_request(&Request { time }).is_err());
+
+        let time = eastern_eod() - Duration::weeks(1);
+        assert!(validate_request(&Request { time }).is_err());
+    }
+
+    #[test]
+    fn test_get_url_eastern() {
+        let monday = Eastern
+            .ymd(2017, 7, 3)
+            .and_hms(0, 0, 0)
+            .with_timezone(&Local);
         assert_eq!(
             "http://theclassicalstation.org/playing_mon.shtml",
             get_url(monday)
         );
 
-        let friday = Local.ymd(2017, 7, 7).and_hms(12, 0, 0);
+        let friday = Eastern
+            .ymd(2017, 7, 7)
+            .and_hms(23, 0, 0)
+            .with_timezone(&Local);
         assert_eq!(
             "http://theclassicalstation.org/playing_fri.shtml",
+            get_url(friday)
+        );
+    }
+
+    #[test]
+    fn test_get_url_pacific() {
+        let monday = Pacific
+            .ymd(2017, 7, 3)
+            .and_hms(0, 0, 0)
+            .with_timezone(&Local);
+        assert_eq!(
+            "http://theclassicalstation.org/playing_mon.shtml",
+            get_url(monday)
+        );
+
+        let friday = Pacific
+            .ymd(2017, 7, 7)
+            .and_hms(23, 0, 0)
+            .with_timezone(&Local);
+        assert_eq!(
+            "http://theclassicalstation.org/playing_sat.shtml",
             get_url(friday)
         );
     }
