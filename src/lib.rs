@@ -18,12 +18,15 @@ extern crate quick_error;
 extern crate chrono;
 extern crate chrono_tz;
 extern crate curl;
+extern crate encoding;
 extern crate option_filter;
 extern crate table_extract;
 
-use chrono::{DateTime, Datelike, Duration, Local, Timelike, Utc};
-use chrono_tz::US::{Eastern, Pacific};
+use chrono::{DateTime, Datelike, Duration, Local, Timelike};
+use chrono_tz::US::Eastern;
 use curl::easy::Easy;
+use encoding::all::WINDOWS_1252;
+use encoding::{Encoding, DecoderTrap};
 use option_filter::OptionFilterExt;
 use std::result;
 use table_extract::Table;
@@ -98,7 +101,7 @@ pub fn lookup(request: &Request) -> Result<Response> {
 
 fn validate_request(request: &Request) -> Result<()> {
     let t = request.time;
-    let end_of_day = eastern_eod();
+    let end_of_day = eastern_eod(Local::now());
     if t <= end_of_day - Duration::weeks(1) || t > end_of_day {
         Err(Error::Unavailable)
     } else {
@@ -117,8 +120,7 @@ fn get_url(time: DateTime<Local>) -> String {
     format!("http://theclassicalstation.org/playing_{}.shtml", day)
 }
 
-const INVALID_UTF8: &'static str = "<!-- invalid utf-8 -->";
-
+// NOTE: theclassicalstation.org uses Windows-1252 encoding.
 fn download(url: &str) -> Result<String> {
     let mut body = String::new();
     let mut handle = Easy::new();
@@ -126,8 +128,9 @@ fn download(url: &str) -> Result<String> {
     {
         let mut transfer = handle.transfer();
         transfer.write_function(|data| {
-            body.push_str(&String::from_utf8(data.to_vec())
-                .unwrap_or_else(|_| INVALID_UTF8.to_string()));
+            WINDOWS_1252
+                .decode_to(data, DecoderTrap::Ignore, &mut body)
+                .unwrap();
             Ok(data.len())
         })?;
         transfer.perform()?;
@@ -149,7 +152,7 @@ fn lookup_in_html(request: &Request, html: &str) -> Result<Response> {
     let mut previous = None;
     for row in &table {
         let time = row.get(&time_header).ok_or(Error::HtmlParse)?;
-        let time = parse_eastern_time(time)?;
+        let time = parse_eastern_time(request.time, time)?;
         if time > request.time {
             end_time = Some(time);
             break;
@@ -163,7 +166,7 @@ fn lookup_in_html(request: &Request, html: &str) -> Result<Response> {
     }
 
     let (row, start_time) = previous.ok_or(Error::RowNotFound)?;
-    let end_time = end_time.unwrap_or_else(eastern_eod);
+    let end_time = end_time.unwrap_or_else(|| eastern_eod(request.time));
     let program = program.unwrap_or(MISSING).to_string();
     let extract =
         |name| row.get(&header(name)).unwrap_or(MISSING).trim().to_string();
@@ -183,7 +186,10 @@ fn header(name: &str) -> String {
     format!("<p>{}\n</p>", name)
 }
 
-fn parse_eastern_time(input: &str) -> Result<DateTime<Local>> {
+fn parse_eastern_time(
+    base: DateTime<Local>,
+    input: &str,
+) -> Result<DateTime<Local>> {
     let input = input.trim();
     let index = input.find(':').ok_or(Error::TimeParse)?;
     let (hh, colon_mm) = input.split_at(index);
@@ -191,8 +197,7 @@ fn parse_eastern_time(input: &str) -> Result<DateTime<Local>> {
     let hour = hh.parse::<u32>()?;
     let minute = mm.parse::<u32>()?;
 
-    Utc::now()
-        .with_timezone(&Eastern)
+    base.with_timezone(&Eastern)
         .with_hour(hour)
         .and_then(|t| t.with_minute(minute))
         .and_then(|t| t.with_second(0))
@@ -201,9 +206,8 @@ fn parse_eastern_time(input: &str) -> Result<DateTime<Local>> {
         .ok_or(Error::TimeParse)
 }
 
-fn eastern_eod() -> DateTime<Local> {
-    Utc::now()
-        .with_timezone(&Eastern)
+fn eastern_eod(base: DateTime<Local>) -> DateTime<Local> {
+    base.with_timezone(&Eastern)
         .with_hour(23)
         .and_then(|t| t.with_minute(59))
         .and_then(|t| t.with_second(0))
@@ -213,30 +217,32 @@ fn eastern_eod() -> DateTime<Local> {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
 
     use chrono::TimeZone;
+    use chrono_tz::US::Pacific;
+
+    #[test]
+    fn test_validate_request_err() {
+        let time = eastern_eod(Local::now()) + Duration::seconds(1);
+        assert!(validate_request(&Request { time }).is_err());
+
+        let time = eastern_eod(Local::now()) - Duration::weeks(1);
+        assert!(validate_request(&Request { time }).is_err());
+    }
 
     #[test]
     fn test_validate_request_ok() {
         let time = Local::now();
         assert!(validate_request(&Request { time }).is_ok());
 
-        let time = eastern_eod();
+        let time = eastern_eod(Local::now());
         assert!(validate_request(&Request { time }).is_ok());
 
-        let time = eastern_eod() - Duration::weeks(1) + Duration::seconds(1);
+        let time = eastern_eod(Local::now()) - Duration::weeks(1) +
+            Duration::minutes(1);
         assert!(validate_request(&Request { time }).is_ok());
-    }
-
-    #[test]
-    fn test_validate_request_err() {
-        let time = eastern_eod() + Duration::seconds(1);
-        assert!(validate_request(&Request { time }).is_err());
-
-        let time = eastern_eod() - Duration::weeks(1);
-        assert!(validate_request(&Request { time }).is_err());
     }
 
     #[test]
@@ -282,27 +288,74 @@ mod test {
     }
 
     #[test]
-    fn test_parse_eastern_time_ok() {
-        assert!(parse_eastern_time("00:00").is_ok());
-        assert!(parse_eastern_time("12:00").is_ok());
-        assert!(parse_eastern_time("23:59").is_ok());
-        assert!(parse_eastern_time(" 1:34 ").is_ok());
+    fn test_parse_eastern_time_err() {
+        let now = Local::now();
+
+        assert!(parse_eastern_time(now, "").is_err());
+        assert!(parse_eastern_time(now, "00").is_err());
+        assert!(parse_eastern_time(now, "-1").is_err());
+        assert!(parse_eastern_time(now, "24:00").is_err());
+        assert!(parse_eastern_time(now, "A:B").is_err());
     }
 
     #[test]
-    fn test_parse_eastern_time_err() {
-        assert!(parse_eastern_time("").is_err());
-        assert!(parse_eastern_time("00").is_err());
-        assert!(parse_eastern_time("-1").is_err());
-        assert!(parse_eastern_time("24:00").is_err());
-        assert!(parse_eastern_time("A:B").is_err());
+    fn test_parse_eastern_time_ok() {
+        let now = Local::now();
+
+        assert!(parse_eastern_time(now, "00:00").is_ok());
+        assert!(parse_eastern_time(now, "12:00").is_ok());
+        assert!(parse_eastern_time(now, "23:59").is_ok());
+        assert!(parse_eastern_time(now, " 1:34 ").is_ok());
+    }
+
+    #[test]
+    fn test_parse_eastern_time_eastern() {
+        let base = Eastern
+            .ymd(2017, 7, 10)
+            .and_hms(23, 0, 0)
+            .with_timezone(&Local);
+
+        assert_eq!(
+            Eastern
+                .ymd(2017, 7, 10)
+                .and_hms(12, 0, 0)
+                .with_timezone(&Local),
+            parse_eastern_time(base, "12:00").unwrap()
+        );
+    }
+
+    #[test]
+    fn test_parse_eastern_time_pacific() {
+        let base = Pacific
+            .ymd(2017, 7, 10)
+            .and_hms(23, 0, 0)
+            .with_timezone(&Local);
+
+        assert_eq!(
+            Eastern
+                .ymd(2017, 7, 11)
+                .and_hms(12, 0, 0)
+                .with_timezone(&Local),
+            parse_eastern_time(base, "12:00").unwrap()
+        );
     }
 
     #[test]
     fn test_eastern_eod() {
-        assert!(parse_eastern_time("00:00").unwrap() < eastern_eod());
-        assert!(parse_eastern_time("23:58").unwrap() < eastern_eod());
-        assert_eq!(parse_eastern_time("23:59").unwrap(), eastern_eod());
+        let base = Local::now();
+        assert_eq!(
+            parse_eastern_time(base, "23:59").unwrap(),
+            eastern_eod(base)
+        );
+
+        let base = Pacific
+            .ymd(2017, 7, 10)
+            .and_hms(23, 0, 0)
+            .with_timezone(&Local);
+        assert_eq!(
+            parse_eastern_time(base, "23:59").unwrap(),
+            eastern_eod(base)
+        );
     }
 
     #[test]
@@ -314,7 +367,7 @@ mod test {
         assert!(lookup_in_html(&request, "<table><tr></tr></table>").is_err());
     }
 
-    const SAMPLE_HTML: &'static str = r#"
+    const HTML: &'static str = r#"
 <table>
 <tr>
 <th>
@@ -349,51 +402,53 @@ mod test {
 
     #[test]
     fn test_lookup_in_html_too_early() {
-        let request = Request { time: parse_eastern_time("00:00").unwrap() };
-        assert!(lookup_in_html(&request, SAMPLE_HTML).is_err());
+        let time = parse_eastern_time(Local::now(), "00:00").unwrap();
+        assert!(lookup_in_html(&Request { time }, HTML).is_err());
     }
 
     #[test]
     fn test_lookup_in_html_first() {
+        let now = Local::now();
         let expected = Response {
             program: "Sleepers, Awake!".to_string(),
-            start_time: parse_eastern_time("00:01").unwrap(),
-            end_time: parse_eastern_time("00:27").unwrap(),
+            start_time: parse_eastern_time(now, "00:01").unwrap(),
+            end_time: parse_eastern_time(now, "00:27").unwrap(),
             composer: "Respighi".to_string(),
             title: "Church Windows".to_string(),
             performers: "Buffalo Philharmonic/Falletta".to_string(),
             record_label: "Naxos".to_string(),
         };
 
-        let request = Request { time: parse_eastern_time("00:01").unwrap() };
-        assert_eq!(expected, lookup_in_html(&request, SAMPLE_HTML).unwrap());
+        let time = parse_eastern_time(now, "00:01").unwrap();
+        assert_eq!(expected, lookup_in_html(&Request { time }, HTML).unwrap());
 
-        let request = Request { time: parse_eastern_time("00:02").unwrap() };
-        assert_eq!(expected, lookup_in_html(&request, SAMPLE_HTML).unwrap());
+        let time = parse_eastern_time(now, "00:02").unwrap();
+        assert_eq!(expected, lookup_in_html(&Request { time }, HTML).unwrap());
 
-        let request = Request { time: parse_eastern_time("00:26").unwrap() };
-        assert_eq!(expected, lookup_in_html(&request, SAMPLE_HTML).unwrap());
+        let time = parse_eastern_time(now, "00:26").unwrap();
+        assert_eq!(expected, lookup_in_html(&Request { time }, HTML).unwrap());
     }
 
     #[test]
     fn test_lookup_in_html_last() {
+        let now = Local::now();
         let expected = Response {
             program: "Sleepers, Awake!".to_string(),
-            start_time: parse_eastern_time("00:27").unwrap(),
-            end_time: parse_eastern_time("23:59").unwrap(),
+            start_time: parse_eastern_time(now, "00:27").unwrap(),
+            end_time: parse_eastern_time(now, "23:59").unwrap(),
             composer: "Handel".to_string(),
             title: "Concerto Grosso in D, Op. 3 No. 6".to_string(),
             performers: "Concentus Musicus of Vienna/Harnoncourt".to_string(),
             record_label: "MHS".to_string(),
         };
 
-        let request = Request { time: parse_eastern_time("00:27").unwrap() };
-        assert_eq!(expected, lookup_in_html(&request, SAMPLE_HTML).unwrap());
+        let time = parse_eastern_time(now, "00:27").unwrap();
+        assert_eq!(expected, lookup_in_html(&Request { time }, HTML).unwrap());
 
-        let request = Request { time: parse_eastern_time("00:28").unwrap() };
-        assert_eq!(expected, lookup_in_html(&request, SAMPLE_HTML).unwrap());
+        let time = parse_eastern_time(now, "00:28").unwrap();
+        assert_eq!(expected, lookup_in_html(&Request { time }, HTML).unwrap());
 
-        let request = Request { time: parse_eastern_time("23:59").unwrap() };
-        assert_eq!(expected, lookup_in_html(&request, SAMPLE_HTML).unwrap());
+        let time = parse_eastern_time(now, "23:59").unwrap();
+        assert_eq!(expected, lookup_in_html(&Request { time }, HTML).unwrap());
     }
 }
