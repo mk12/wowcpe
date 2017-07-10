@@ -63,12 +63,12 @@ fn parse_time(input: &str) -> Option<DateTime<Local>> {
 }
 
 fn print_response(r: &Response) {
-    let fmt = "%I:%M %p";
-    let start = r.start_time.time().format(fmt);
-    let end = r.end_time.time().format(fmt);
+    let fmt = "%l:%M %p";
+    let start = r.start_time.time().format(fmt).to_string();
+    let end = r.end_time.time().format(fmt).to_string();
 
     println!("Program       {}", r.program);
-    println!("Time          {} - {}", start, end);
+    println!("Time          {} - {}", start.trim(), end.trim());
     println!("Composer      {}", r.composer);
     println!("Title         {}", r.title);
     println!("Performers    {}", r.performers);
