@@ -10,16 +10,19 @@
 //! [`lookup`]: fn.lookup.html
 //! [`Response`]: struct.Response.html
 
+#[macro_use]
+extern crate quick_error;
+
 extern crate chrono;
 extern crate chrono_tz;
 extern crate curl;
+extern crate option_filter;
 extern crate table_extract;
 
-use chrono::{DateTime, Utc, Local, Datelike, Timelike};
+use chrono::{DateTime, Datelike, Local, Timelike, Utc};
 use chrono_tz::US::Eastern;
 use curl::easy::Easy;
-use std::error;
-use std::fmt;
+use option_filter::OptionFilterExt;
 use std::result;
 use table_extract::Table;
 
@@ -34,9 +37,9 @@ pub struct Response {
     /// Name of the current program, e.g., "Sleepers, Awake!"
     pub program: String,
     /// Time the piece started playing.
-    pub start: DateTime<Local>,
+    pub start_time: DateTime<Local>,
     /// Time the piece stopped (or will stop) playing.
-    pub end: DateTime<Local>,
+    pub end_time: DateTime<Local>,
     /// Composer of the piece.
     pub composer: String,
     /// Title of the piece.
@@ -45,11 +48,26 @@ pub struct Response {
     pub performers: String,
 }
 
-/// An error that occurs while processing a request.
-pub enum Error {
-    CurlError(curl::Error),
-    TableNotFoundError,
-    TimeParseError,
+quick_error!{
+    /// An error that occurs while processing a request.
+    #[derive(Debug)]
+    pub enum Error {
+        Curl(err: curl::Error) {
+            cause(err)
+            description(err.description())
+            from()
+        }
+        HtmlParse {
+            description("Failed to parse the HTML document")
+        }
+        RowNotFound {
+            description("Failed to find the current table row")
+        }
+        TimeParse {
+            description("Failed to parse the time")
+            from(std::num::ParseIntError)
+        }
+    }
 }
 
 /// A specialized `Result` type for the `wowcpe` crate.
@@ -74,7 +92,7 @@ fn get_url(time: DateTime<Local>) -> String {
     format!("http://theclassicalstation.org/playing_{}.shtml", day)
 }
 
-const INVALID_UTF8: &'static str = "<invalid utf-8>";
+const INVALID_UTF8: &'static str = "<!-- invalid utf-8 -->";
 
 fn download(url: &str) -> Result<String> {
     let mut body = String::new();
@@ -93,39 +111,55 @@ fn download(url: &str) -> Result<String> {
     Ok(body)
 }
 
-const HEADERS: [&'static str; 5] =
-    ["Program", "Start Time", "Composer", "Title", "Performers"];
+const MISSING: &'static str = "<missing>";
 
 fn lookup_in_html(request: &Request, html: &str) -> Result<Response> {
-    let table = Table::find_by_headers(html, &HEADERS)
-        .ok_or(Error::TableNotFoundError)?;
+    let time_header = header("Start Time");
+    let program_header = header("Program");
+    let table = Table::find_by_headers(html, &[&program_header, &time_header])
+        .ok_or(Error::HtmlParse)?;
 
-    let now = Local::now();
-    let (row1, row2) = table
-        .iter()
-        .zip(table.iter().skip(1))
-        .find(|&(row1, row2)| {
-            row2.get("Start Time").map_or(false, |time| {
-                parse_eastern_time(time).iter().any(|time| time > &now)
-            })
-        })
-        .ok_or(Error::TableNotFoundError)?;
+    let mut end_time = None;
+    let mut program = None;
+    let mut previous = None;
+    for row in &table {
+        let time = row.get(&time_header).ok_or(Error::HtmlParse)?;
+        let time = parse_eastern_time(time)?;
+        if time > request.time {
+            end_time = Some(time);
+            break;
+        }
 
+        program = row.get(&program_header)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .or(program);
+        previous = Some((row, time))
+    }
+
+    let (row, start_time) = previous.ok_or(Error::RowNotFound)?;
+    let end_time = end_time.unwrap_or_else(eastern_eod);
+    let program = program.unwrap_or(MISSING).to_string();
+    let extract =
+        |name| row.get(&header(name)).unwrap_or(MISSING).trim().to_string();
 
     Ok(Response {
-        program: "".to_string(),
-        start: request.time,
-        end: request.time,
-        composer: "".to_string(),
-        title: "".to_string(),
-        performers: "".to_string(),
+        program,
+        start_time,
+        end_time,
+        composer: extract("Composer"),
+        title: extract("Title"),
+        performers: extract("Perfomers"),
     })
+}
+
+fn header(name: &str) -> String {
+    format!("<p>{}\n</p>", name)
 }
 
 fn parse_eastern_time(input: &str) -> Result<DateTime<Local>> {
     let input = input.trim();
-    let index = input.find(':').ok_or(Error::TimeParseError)?;
-
+    let index = input.find(':').ok_or(Error::TimeParse)?;
     let (hh, colon_mm) = input.split_at(index);
     let mm = &colon_mm[1..];
     let hour = hh.parse::<u32>()?;
@@ -135,60 +169,28 @@ fn parse_eastern_time(input: &str) -> Result<DateTime<Local>> {
         .with_timezone(&Eastern)
         .with_hour(hour)
         .and_then(|t| t.with_minute(minute))
+        .and_then(|t| t.with_second(0))
+        .and_then(|t| t.with_nanosecond(0))
         .map(|t| t.with_timezone(&Local))
-        .ok_or(Error::TimeParseError)
+        .ok_or(Error::TimeParse)
 }
 
-impl From<curl::Error> for Error {
-    fn from(err: curl::Error) -> Error {
-        Error::CurlError(err)
-    }
-}
-
-impl From<std::num::ParseIntError> for Error {
-    fn from(err: std::num::ParseIntError) -> Error {
-        Error::TimeParseError
-    }
-}
-
-impl fmt::Debug for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> result::Result<(), fmt::Error> {
-        match *self {
-            Error::CurlError(ref err) => err.fmt(f),
-            _ => f.write_str(<Error as error::Error>::description(self)),
-        }
-    }
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> result::Result<(), fmt::Error> {
-        match *self {
-            Error::CurlError(ref err) => err.fmt(f),
-            _ => f.write_str(<Error as error::Error>::description(self)),
-        }
-    }
-}
-
-impl error::Error for Error {
-    fn description(&self) -> &str {
-        match *self {
-            Error::CurlError(ref err) => err.description(),
-            Error::TableNotFoundError => "Could not find table in HTML",
-            Error::TimeParseError => "Could not parse time in table",
-        }
-    }
-
-    fn cause(&self) -> Option<&error::Error> {
-        match *self {
-            Error::CurlError(ref err) => err.cause(),
-            _ => None,
-        }
-    }
+fn eastern_eod() -> DateTime<Local> {
+    Utc::now()
+        .with_timezone(&Eastern)
+        .with_hour(23)
+        .and_then(|t| t.with_minute(59))
+        .and_then(|t| t.with_second(0))
+        .and_then(|t| t.with_nanosecond(0))
+        .unwrap()
+        .with_timezone(&Local)
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+
+    use chrono::TimeZone;
 
     #[test]
     fn test_get_url() {
@@ -206,12 +208,26 @@ mod test {
     }
 
     #[test]
-    fn test_lookup_in_html() {
-        assert!(false)
+    fn test_parse_eastern_time_ok() {
+        assert!(parse_eastern_time("00:00").is_ok());
+        assert!(parse_eastern_time("12:00").is_ok());
+        assert!(parse_eastern_time("23:59").is_ok());
+        assert!(parse_eastern_time(" 1:34 ").is_ok());
     }
 
     #[test]
-    fn test_parse_eastern_time() {
-        assert!(false)
+    fn test_parse_eastern_time_err() {
+        assert!(parse_eastern_time("").is_err());
+        assert!(parse_eastern_time("00").is_err());
+        assert!(parse_eastern_time("-1").is_err());
+        assert!(parse_eastern_time("24:00").is_err());
+        assert!(parse_eastern_time("A:B").is_err());
+    }
+
+    #[test]
+    fn test_lookup_in_html() {
+        let req = Request{ time: Local::now() };
+
+        assert_eq!(Error::HtmlParse, lookup_in_html(&req, ""));
     }
 }

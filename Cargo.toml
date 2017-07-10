@@ -11,6 +11,10 @@ readme = "README.md"
 keywords = ["classical", "music", "WCPE", "scraper"]
 categories = ["command-line-utilities"]
 
+[lib]
+name = "wowcpe"
+doc = true
+
 [[bin]]
 name = "wowcpe"
 doc = false
@@ -20,4 +24,6 @@ chrono = "0.4"
 chrono-tz = "0.4"
 clap = "2.25.0"
 curl = "0.4.7"
-table-extract = "0.2.0"
+option-filter = "1.0.1"
+quick-error = "1.2.0"
+table-extract = "0.2.1"

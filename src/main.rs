@@ -6,7 +6,6 @@ extern crate wowcpe;
 
 use chrono::{DateTime, Local, Timelike};
 use clap::{App, Arg};
-use std::error::Error;
 use std::io::Write;
 
 use wowcpe::{Request, Response};
@@ -26,14 +25,14 @@ fn main() {
         .get_matches();
 
     let time = if let Some(arg) = matches.value_of("time") {
-        parse_time(arg).unwrap_or_else(|_| invalid_arg(arg))
+        parse_time(arg).unwrap_or_else(|| invalid_arg(arg))
     } else {
         current_time()
     };
 
     match wowcpe::lookup(&Request { time }) {
         Ok(response) => print_response(&response),
-        Err(err) => fail(err.description()),
+        Err(err) => fail(&err.to_string()),
     }
 }
 
@@ -41,31 +40,35 @@ fn current_time() -> DateTime<Local> {
     Local::now().with_nanosecond(0).unwrap()
 }
 
-fn parse_time(input: &str) -> Result<DateTime<Local>, ()> {
+fn parse_time(input: &str) -> Option<DateTime<Local>> {
     let input = input.trim();
-    let (hour, minute) : (u32, u32) = if let Some(index) = input.find(':') {
+    let (hour, minute): (u32, u32) = if let Some(index) = input.find(':') {
         let (hh, colon_mm) = input.split_at(index);
         let mm = &colon_mm[1..];
-        match (hh.parse(), mm.parse()) {
-            (Ok(hour), Ok(minute)) => (hour, minute),
-            _ => return Err(()),
+        if let (Ok(hour), Ok(minute)) = (hh.parse(), mm.parse()) {
+            (hour, minute)
+        } else {
+            return None;
         }
     } else if let Ok(hour) = input.parse() {
         (hour, 0)
     } else {
-        return Err(());
+        return None;
     };
 
     Local::now()
         .with_hour(hour)
         .and_then(|t| t.with_minute(minute))
         .and_then(|t| t.with_nanosecond(0))
-        .ok_or(())
 }
 
 fn print_response(r: &Response) {
+    let fmt = "%k:%M %p";
+    let start = r.start_time.time().format(fmt);
+    let end = r.end_time.time().format(fmt);
+
     println!("Program     {}", r.program);
-    println!("Time        {} - {}", r.start.time(), r.end.time());
+    println!("Time        {} - {}", start, end);
     println!("Composer    {}", r.composer);
     println!("Title       {}", r.title);
     println!("Performers  {}", r.performers);
