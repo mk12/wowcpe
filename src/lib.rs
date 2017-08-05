@@ -19,6 +19,7 @@ extern crate chrono;
 extern crate chrono_tz;
 extern crate curl;
 extern crate encoding;
+extern crate marksman_escape;
 extern crate option_filter;
 extern crate table_extract;
 
@@ -27,6 +28,7 @@ use chrono_tz::US::Eastern;
 use curl::easy::Easy;
 use encoding::all::WINDOWS_1252;
 use encoding::{Encoding, DecoderTrap};
+use marksman_escape::Unescape;
 use option_filter::OptionFilterExt;
 use std::result;
 use table_extract::Table;
@@ -139,8 +141,6 @@ fn download(url: &str) -> Result<String> {
     Ok(body)
 }
 
-const MISSING: &'static str = "<missing>";
-
 fn lookup_in_html(request: &Request, html: &str) -> Result<Response> {
     let time_header = header("Start Time");
     let program_header = header("Program");
@@ -167,9 +167,8 @@ fn lookup_in_html(request: &Request, html: &str) -> Result<Response> {
 
     let (row, start_time) = previous.ok_or(Error::RowNotFound)?;
     let end_time = end_time.unwrap_or_else(|| eastern_eod(request.time));
-    let program = program.unwrap_or(MISSING).to_string();
-    let extract =
-        |name| row.get(&header(name)).unwrap_or(MISSING).trim().to_string();
+    let program = parse_field(program);
+    let extract = |name| parse_field(row.get(&header(name)));
 
     Ok(Response {
         program,
@@ -214,6 +213,17 @@ fn eastern_eod(base: DateTime<Local>) -> DateTime<Local> {
         .and_then(|t| t.with_nanosecond(0))
         .unwrap()
         .with_timezone(&Local)
+}
+
+const MISSING: &'static str = "<missing>";
+
+fn parse_field(html: Option<&str>) -> String {
+    if let Some(html) = html {
+        let bytes = html.trim().bytes();
+        String::from_utf8(Unescape::new(bytes).collect()).unwrap()
+    } else {
+        MISSING.to_string()
+    }
 }
 
 #[cfg(test)]
@@ -359,6 +369,19 @@ mod tests {
     }
 
     #[test]
+    fn parse_field_none() {
+        assert_eq!(MISSING, parse_field(None));
+    }
+
+    #[test]
+    fn parse_field_some() {
+        assert_eq!("Something", parse_field(Some(" Something ")));
+        assert_eq!("this & that", parse_field(Some("this &amp; that ")));
+        assert_eq!("'Twas so", parse_field(Some("&apos;Twas so")));
+        assert_eq!("what &a;", parse_field(Some("what &a;")));
+    }
+
+    #[test]
     fn test_lookup_in_html_parse_err() {
         let request = Request { time: Local::now() };
 
@@ -386,9 +409,9 @@ mod tests {
 <tr>
 <td>Sleepers, Awake!</td>
 <td>00:01</td>
-<td>Respighi</td>
-<td>Church Windows</td>
-<td>Buffalo Philharmonic/Falletta</td>
+<td>Liszt</td>
+<td>Tasso: Lament &amp; Trimuph (Symphonic Poem No. 2)</td>
+<td>Gewandhaus Orchestra/Masur</td>
 <td>Naxos</td></tr>
 <tr>
 <td></td>
@@ -413,9 +436,9 @@ mod tests {
             program: "Sleepers, Awake!".to_string(),
             start_time: parse_eastern_time(now, "00:01").unwrap(),
             end_time: parse_eastern_time(now, "00:27").unwrap(),
-            composer: "Respighi".to_string(),
-            title: "Church Windows".to_string(),
-            performers: "Buffalo Philharmonic/Falletta".to_string(),
+            composer: "Liszt".to_string(),
+            title: "Tasso: Lament & Trimuph (Symphonic Poem No. 2)".to_string(),
+            performers: "Gewandhaus Orchestra/Masur".to_string(),
             record_label: "Naxos".to_string(),
         };
 
