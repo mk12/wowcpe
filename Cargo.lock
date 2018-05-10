@@ -1,18 +1,3 @@
-[root]
-name = "wowcpe"
-version = "0.1.0"
-dependencies = [
- "chrono 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "chrono-tz 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "clap 2.25.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "curl 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)",
- "encoding 0.2.33 (registry+https://github.com/rust-lang/crates.io-index)",
- "marksman_escape 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "option-filter 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "quick-error 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "table-extract 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
 [[package]]
 name = "aho-corasick"
 version = "0.5.3"
@@ -344,11 +329,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "option-filter"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-
-[[package]]
 name = "parse-zoneinfo"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -639,6 +619,20 @@ version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "wowcpe"
+version = "0.1.1"
+dependencies = [
+ "chrono 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "chrono-tz 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "clap 2.25.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "curl 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)",
+ "encoding 0.2.33 (registry+https://github.com/rust-lang/crates.io-index)",
+ "marksman_escape 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "quick-error 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "table-extract 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "ws2_32-sys"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -690,7 +684,6 @@ dependencies = [
 "checksum odds 0.2.25 (registry+https://github.com/rust-lang/crates.io-index)" = "c3df9b730298cea3a1c3faa90b7e2f9df3a9c400d0936d6015e6165734eefcba"
 "checksum openssl-probe 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "d98df0270d404ccd3c050a41d579c52d1db15375168bb3471e04ec0f5f378daf"
 "checksum openssl-sys 0.9.14 (registry+https://github.com/rust-lang/crates.io-index)" = "236c718c2e2c2b58a546d86ffea5194400bb15dbe01ca85325ffd357b03cf66c"
-"checksum option-filter 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)" = "9bf65b2257f1a21d61b26bcccaef5ab66029054256f8d65442d5bb7aa07e75d2"
 "checksum parse-zoneinfo 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "671d7d79cfe0f94ed443848d06c56c7c75fe33c6ad940ba487ddc2eaaf55cf3e"
 "checksum phf 0.7.21 (registry+https://github.com/rust-lang/crates.io-index)" = "cb325642290f28ee14d8c6201159949a872f220c62af6e110a56ea914fbe42fc"
 "checksum phf_codegen 0.7.21 (registry+https://github.com/rust-lang/crates.io-index)" = "d62594c0bb54c464f633175d502038177e90309daf2e0158be42ed5f023ce88f"

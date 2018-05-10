@@ -12,24 +12,21 @@
 //! [`Response`]: struct.Response.html
 //! [`Request`]: struct.Request.html
 
+#![feature(option_filter)]
+
 #[macro_use]
 extern crate quick_error;
 
 extern crate chrono;
 extern crate chrono_tz;
 extern crate curl;
-extern crate encoding;
 extern crate marksman_escape;
-extern crate option_filter;
 extern crate table_extract;
 
 use chrono::{DateTime, Datelike, Duration, Local, Timelike};
 use chrono_tz::US::Eastern;
 use curl::easy::Easy;
-use encoding::all::WINDOWS_1252;
-use encoding::{Encoding, DecoderTrap};
 use marksman_escape::Unescape;
-use option_filter::OptionFilterExt;
 use std::result;
 use table_extract::Table;
 
@@ -87,6 +84,8 @@ quick_error!{
 /// A specialized `Result` type for the `wowcpe` crate.
 pub type Result<T> = result::Result<T, Error>;
 
+const WCPE_URL: &'static str = "http://theclassicalstation.org/whats-playing/";
+
 /// Looks up what is playing on WCPE based on `request`.
 ///
 /// Returns an error if `request.time` is not within the past week, since WCPE
@@ -97,7 +96,7 @@ pub type Result<T> = result::Result<T, Error>;
 /// if extracting the desired information from the HTML fails.
 pub fn lookup(request: &Request) -> Result<Response> {
     validate_request(request)?;
-    let html = download(&get_url(request.time))?;
+    let html = download(WCPE_URL)?;
     lookup_in_html(request, &html)
 }
 
@@ -111,18 +110,24 @@ fn validate_request(request: &Request) -> Result<()> {
     }
 }
 
-const WEEKDAYS: [&'static str; 7] =
-    ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+const WEEKDAYS: [&'static str; 7] = [
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+];
 
-fn get_url(time: DateTime<Local>) -> String {
+fn get_div_id(time: DateTime<Local>) -> String {
     let index = time.with_timezone(&Eastern)
         .weekday()
         .num_days_from_monday() as usize;
     let day = WEEKDAYS[index];
-    format!("http://theclassicalstation.org/playing_{}.shtml", day)
+    format!("tabs-{}", day)
 }
 
-// NOTE: theclassicalstation.org uses Windows-1252 encoding.
 fn download(url: &str) -> Result<String> {
     let mut body = String::new();
     let mut handle = Easy::new();
@@ -130,9 +135,7 @@ fn download(url: &str) -> Result<String> {
     {
         let mut transfer = handle.transfer();
         transfer.write_function(|data| {
-            WINDOWS_1252
-                .decode_to(data, DecoderTrap::Ignore, &mut body)
-                .unwrap();
+            body.push_str(&String::from_utf8_lossy(data));
             Ok(data.len())
         })?;
         transfer.perform()?;
@@ -142,10 +145,18 @@ fn download(url: &str) -> Result<String> {
 }
 
 fn lookup_in_html(request: &Request, html: &str) -> Result<Response> {
-    let time_header = header("Start Time");
-    let program_header = header("Program");
-    let table = Table::find_by_headers(html, &[&program_header, &time_header])
-        .ok_or(Error::HtmlParse)?;
+    // Slice to the beginning of the tab div for the current weekday. This is a
+    // bit hacky; the website used to have a different URL for each weekday.
+    let div_id = get_div_id(request.time);
+    let search_token = format!("<div id=\"{}\"", div_id);
+    let start_index = html.find(&search_token).ok_or(Error::HtmlParse)?;
+    let html_fragment = &html[start_index..];
+
+    let time_header = "Start Time";
+    let program_header = "Program";
+    let table =
+        Table::find_by_headers(html_fragment, &[time_header, program_header])
+            .ok_or(Error::HtmlParse)?;
 
     let mut end_time = None;
     let mut program = None;
@@ -168,7 +179,7 @@ fn lookup_in_html(request: &Request, html: &str) -> Result<Response> {
     let (row, start_time) = previous.ok_or(Error::RowNotFound)?;
     let end_time = end_time.unwrap_or_else(|| eastern_eod(request.time));
     let program = parse_field(program);
-    let extract = |name| parse_field(row.get(&header(name)));
+    let extract = |name| parse_field(row.get(name));
 
     Ok(Response {
         program,
@@ -179,10 +190,6 @@ fn lookup_in_html(request: &Request, html: &str) -> Result<Response> {
         performers: extract("Performers"),
         record_label: extract("Record Label"),
     })
-}
-
-fn header(name: &str) -> String {
-    format!("<p>{}\n</p>", name)
 }
 
 fn parse_eastern_time(
@@ -250,8 +257,8 @@ mod tests {
         let time = eastern_eod(Local::now());
         assert!(validate_request(&Request { time }).is_ok());
 
-        let time = eastern_eod(Local::now()) - Duration::weeks(1) +
-            Duration::minutes(1);
+        let time = eastern_eod(Local::now()) - Duration::weeks(1)
+            + Duration::minutes(1);
         assert!(validate_request(&Request { time }).is_ok());
     }
 
