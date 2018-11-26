@@ -12,8 +12,6 @@
 //! [`Response`]: struct.Response.html
 //! [`Request`]: struct.Request.html
 
-#![feature(option_filter)]
-
 #[macro_use]
 extern crate quick_error;
 
