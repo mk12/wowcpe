@@ -180,7 +180,7 @@ fn lookup_in_html(request: &Request, html: &str) -> Result<Response> {
 }
 
 fn header(name: &str) -> String {
-    format!("<p>{}\n</p>", name)
+    format!("<p>{}</p>", name)
 }
 
 fn parse_eastern_time(
