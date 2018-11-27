@@ -17,9 +17,7 @@ fn test_now() {
 
 #[test]
 fn test_6_days_ago() {
-    let request = Request {
-        time: Local::now() - Duration::days(6),
-    };
+    let request = Request { time: Local::now() - Duration::days(6) };
     let response = wowcpe::lookup(&request).unwrap();
 
     assert!(response.start_time <= request.time);
@@ -30,9 +28,7 @@ fn test_6_days_ago() {
 
 #[test]
 fn test_1_week_ago() {
-    let request = Request {
-        time: Local::now() - Duration::weeks(1),
-    };
+    let request = Request { time: Local::now() - Duration::weeks(1) };
     let err = wowcpe::lookup(&request).unwrap_err();
 
     assert!(err.to_string().contains("not available"));
