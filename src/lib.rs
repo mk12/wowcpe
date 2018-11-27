@@ -117,7 +117,7 @@ fn get_url(time: DateTime<Local>) -> String {
         .weekday()
         .num_days_from_monday() as usize;
     let day = WEEKDAYS[index];
-    format!("http://theclassicalstation.org/playing_{}.shtml", day)
+    format!("https://theclassicalstation.org/playing_{}.shtml", day)
 }
 
 // NOTE: theclassicalstation.org uses Windows-1252 encoding.
@@ -260,7 +260,7 @@ mod tests {
             .and_hms(0, 0, 0)
             .with_timezone(&Local);
         assert_eq!(
-            "http://theclassicalstation.org/playing_mon.shtml",
+            "https://theclassicalstation.org/playing_mon.shtml",
             get_url(monday)
         );
 
@@ -269,7 +269,7 @@ mod tests {
             .and_hms(23, 0, 0)
             .with_timezone(&Local);
         assert_eq!(
-            "http://theclassicalstation.org/playing_fri.shtml",
+            "https://theclassicalstation.org/playing_fri.shtml",
             get_url(friday)
         );
     }
@@ -281,7 +281,7 @@ mod tests {
             .and_hms(0, 0, 0)
             .with_timezone(&Local);
         assert_eq!(
-            "http://theclassicalstation.org/playing_mon.shtml",
+            "https://theclassicalstation.org/playing_mon.shtml",
             get_url(monday)
         );
 
@@ -290,7 +290,7 @@ mod tests {
             .and_hms(23, 0, 0)
             .with_timezone(&Local);
         assert_eq!(
-            "http://theclassicalstation.org/playing_sat.shtml",
+            "https://theclassicalstation.org/playing_sat.shtml",
             get_url(friday)
         );
     }
