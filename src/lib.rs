@@ -110,14 +110,14 @@ fn validate_request(request: &Request) -> Result<()> {
 }
 
 const WEEKDAYS: [&'static str; 7] =
-    ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+    ["monday", "tueday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 
 fn get_url(time: DateTime<Local>) -> String {
     let index = time.with_timezone(&Eastern)
         .weekday()
         .num_days_from_monday() as usize;
     let day = WEEKDAYS[index];
-    format!("https://theclassicalstation.org/playing_{}.shtml", day)
+    format!("https://theclassicalstation.org/music/{}.shtml", day)
 }
 
 // NOTE: theclassicalstation.org uses Windows-1252 encoding.
@@ -260,7 +260,7 @@ mod tests {
             .and_hms(0, 0, 0)
             .with_timezone(&Local);
         assert_eq!(
-            "https://theclassicalstation.org/playing_mon.shtml",
+            "https://theclassicalstation.org/music/monday.shtml",
             get_url(monday)
         );
 
@@ -269,7 +269,7 @@ mod tests {
             .and_hms(23, 0, 0)
             .with_timezone(&Local);
         assert_eq!(
-            "https://theclassicalstation.org/playing_fri.shtml",
+            "https://theclassicalstation.org/music/friday.shtml",
             get_url(friday)
         );
     }
@@ -281,7 +281,7 @@ mod tests {
             .and_hms(0, 0, 0)
             .with_timezone(&Local);
         assert_eq!(
-            "https://theclassicalstation.org/playing_mon.shtml",
+            "https://theclassicalstation.org/music/monday.shtml",
             get_url(monday)
         );
 
@@ -290,7 +290,7 @@ mod tests {
             .and_hms(23, 0, 0)
             .with_timezone(&Local);
         assert_eq!(
-            "https://theclassicalstation.org/playing_sat.shtml",
+            "https://theclassicalstation.org/music/saturday.shtml",
             get_url(friday)
         );
     }
