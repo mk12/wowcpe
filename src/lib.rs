@@ -109,8 +109,15 @@ fn validate_request(request: &Request) -> Result<()> {
     }
 }
 
-const WEEKDAYS: [&'static str; 7] =
-    ["monday", "tueday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+const WEEKDAYS: [&'static str; 7] = [
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+];
 
 fn get_url(time: DateTime<Local>) -> String {
     let index = time.with_timezone(&Eastern)
