@@ -1,6 +1,6 @@
 [package]
 name = "wowcpe"
-version = "0.1.3"
+version = "0.1.4"
 authors = ["Mitchell Kember <mk12360@gmail.com>"]
 description = "Command-line tool for the classical radio station WCPE"
 license = "MIT"
