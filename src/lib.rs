@@ -12,24 +12,15 @@
 //! [`Response`]: struct.Response.html
 //! [`Request`]: struct.Request.html
 
-#[macro_use]
-extern crate quick_error;
-
-extern crate chrono;
-extern crate chrono_tz;
-extern crate curl;
-extern crate encoding;
-extern crate marksman_escape;
-extern crate table_extract;
-
-use chrono::{DateTime, Datelike, Duration, Local, Timelike};
-use chrono_tz::US::Eastern;
-use curl::easy::Easy;
-use encoding::all::WINDOWS_1252;
-use encoding::{Encoding, DecoderTrap};
-use marksman_escape::Unescape;
-use std::result;
-use table_extract::Table;
+use {
+    chrono::{DateTime, Datelike, Duration, Local, Timelike},
+    chrono_tz::US::Eastern,
+    curl::easy::Easy,
+    encoding::{all::WINDOWS_1252, DecoderTrap, Encoding},
+    marksman_escape::Unescape,
+    std::{error, fmt, result},
+    table_extract::Table,
+};
 
 /// Request to look up what is playing on WCPE.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -57,27 +48,43 @@ pub struct Response {
     pub record_label: String,
 }
 
-quick_error!{
-    /// An error that occurs while processing a request.
-    #[derive(Debug)]
-    pub enum Error {
-        Curl(err: curl::Error) {
-            cause(err)
-            description(err.description())
-            from()
+/// An error that occurs while processing a request.
+#[derive(Debug)]
+pub enum Error {
+    Curl(curl::Error),
+    Unavailable,
+    HtmlParse,
+    RowNotFound,
+    TimeParse,
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::Curl(err) => err.fmt(f),
+            Error::Unavailable => {
+                write!(f, "Data for the given time is not available")
+            }
+            Error::HtmlParse => write!(f, "Failed to parse the HTML document"),
+            Error::RowNotFound => {
+                write!(f, "Failed to find the current table row")
+            }
+            Error::TimeParse => write!(f, "Failed to parse the time"),
         }
-        Unavailable {
-            description("Data for the given time is not available")
-        }
-        HtmlParse {
-            description("Failed to parse the HTML document")
-        }
-        RowNotFound {
-            description("Failed to find the current table row")
-        }
-        TimeParse {
-            description("Failed to parse the time")
-            from(std::num::ParseIntError)
+    }
+}
+
+impl From<curl::Error> for Error {
+    fn from(err: curl::Error) -> Self {
+        Error::Curl(err)
+    }
+}
+
+impl error::Error for Error {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Error::Curl(err) => Some(err),
+            _ => None,
         }
     }
 }
@@ -120,7 +127,8 @@ const WEEKDAYS: [&'static str; 7] = [
 ];
 
 fn get_url(time: DateTime<Local>) -> String {
-    let index = time.with_timezone(&Eastern)
+    let index = time
+        .with_timezone(&Eastern)
         .weekday()
         .num_days_from_monday() as usize;
     let day = WEEKDAYS[index];
@@ -157,17 +165,22 @@ fn lookup_in_html(request: &Request, html: &str) -> Result<Response> {
     let mut previous = None;
     for row in &table {
         let time = row.get(&time_header).ok_or(Error::HtmlParse)?;
-        let time = parse_eastern_time(request.time, time)?;
-        if time > request.time {
-            end_time = Some(time);
-            break;
-        }
+        if let Ok(time) = parse_eastern_time(request.time, time) {
+            if time > request.time {
+                end_time = Some(time);
+                break;
+            }
 
-        program = row.get(&program_header)
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .or(program);
-        previous = Some((row, time))
+            program = row
+                .get(&program_header)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .or(program);
+            previous = Some((row, time))
+        } else {
+            // This can happen on DST start/end days, where times like 01:00 don't exist.
+            println!("Note: skipping time {}", time);
+        }
     }
 
     let (row, start_time) = previous.ok_or(Error::RowNotFound)?;
@@ -198,8 +211,8 @@ fn parse_eastern_time(
     let index = input.find(':').ok_or(Error::TimeParse)?;
     let (hh, colon_mm) = input.split_at(index);
     let mm = &colon_mm[1..];
-    let hour = hh.parse::<u32>()?;
-    let minute = mm.parse::<u32>()?;
+    let hour = hh.parse::<u32>().or(Err(Error::TimeParse))?;
+    let minute = mm.parse::<u32>().or(Err(Error::TimeParse))?;
 
     base.with_timezone(&Eastern)
         .with_hour(hour)
@@ -235,29 +248,30 @@ fn parse_field(html: Option<&str>) -> String {
 mod tests {
     use super::*;
 
+    use assert_matches::assert_matches;
     use chrono::TimeZone;
     use chrono_tz::US::Pacific;
 
     #[test]
     fn test_validate_request_err() {
         let time = eastern_eod(Local::now()) + Duration::seconds(1);
-        assert!(validate_request(&Request { time }).is_err());
+        assert_matches!(validate_request(&Request { time }), Err(_));
 
         let time = eastern_eod(Local::now()) - Duration::weeks(1);
-        assert!(validate_request(&Request { time }).is_err());
+        assert_matches!(validate_request(&Request { time }), Err(_));
     }
 
     #[test]
     fn test_validate_request_ok() {
         let time = Local::now();
-        assert!(validate_request(&Request { time }).is_ok());
+        assert_matches!(validate_request(&Request { time }), Ok(_));
 
         let time = eastern_eod(Local::now());
-        assert!(validate_request(&Request { time }).is_ok());
+        assert_matches!(validate_request(&Request { time }), Ok(_));
 
-        let time = eastern_eod(Local::now()) - Duration::weeks(1) +
-            Duration::minutes(1);
-        assert!(validate_request(&Request { time }).is_ok());
+        let time = eastern_eod(Local::now()) - Duration::weeks(1)
+            + Duration::minutes(1);
+        assert_matches!(validate_request(&Request { time }), Ok(_));
     }
 
     #[test]
@@ -306,21 +320,32 @@ mod tests {
     fn test_parse_eastern_time_err() {
         let now = Local::now();
 
-        assert!(parse_eastern_time(now, "").is_err());
-        assert!(parse_eastern_time(now, "00").is_err());
-        assert!(parse_eastern_time(now, "-1").is_err());
-        assert!(parse_eastern_time(now, "24:00").is_err());
-        assert!(parse_eastern_time(now, "A:B").is_err());
+        assert_matches!(parse_eastern_time(now, ""), Err(_));
+        assert_matches!(parse_eastern_time(now, "00"), Err(_));
+        assert_matches!(parse_eastern_time(now, "-1"), Err(_));
+        assert_matches!(parse_eastern_time(now, "24:00"), Err(_));
+        assert_matches!(parse_eastern_time(now, "A:B"), Err(_));
     }
 
     #[test]
     fn test_parse_eastern_time_ok() {
         let now = Local::now();
 
-        assert!(parse_eastern_time(now, "00:00").is_ok());
-        assert!(parse_eastern_time(now, "12:00").is_ok());
-        assert!(parse_eastern_time(now, "23:59").is_ok());
-        assert!(parse_eastern_time(now, " 1:34 ").is_ok());
+        assert_matches!(parse_eastern_time(now, "00:00"), Ok(_));
+        assert_matches!(parse_eastern_time(now, " 00:00 "), Ok(_));
+        assert_matches!(parse_eastern_time(now, "12:00"), Ok(_));
+        assert_matches!(parse_eastern_time(now, "23:59"), Ok(_));
+        assert_matches!(parse_eastern_time(now, "3:34"), Ok(_));
+    }
+
+    #[test]
+    fn test_parse_eastern_time_daylight_savings() {
+        let base = Eastern
+            .ymd(2019, 11, 3)
+            .and_hms(0, 0, 0)
+            .with_timezone(&Local);
+
+        assert_matches!(parse_eastern_time(base, "1:34"), Err(_));
     }
 
     #[test]
@@ -390,26 +415,29 @@ mod tests {
     fn test_lookup_in_html_parse_err() {
         let request = Request { time: Local::now() };
 
-        assert!(lookup_in_html(&request, "").is_err());
-        assert!(lookup_in_html(&request, "<table></table>").is_err());
-        assert!(lookup_in_html(&request, "<table><tr></tr></table>").is_err());
+        assert_matches!(lookup_in_html(&request, ""), Err(_));
+        assert_matches!(lookup_in_html(&request, "<table></table>"), Err(_));
+        assert_matches!(
+            lookup_in_html(&request, "<table><tr></tr></table>"),
+            Err(_)
+        );
     }
 
     const HTML: &'static str = r#"
 <table>
 <tr>
 <th>
-<p>Program
+<p>Program</p>
 </th><th>
-<p>Start Time
+<p>Start Time</p>
 </th><th>
-<p>Composer
+<p>Composer</p>
 </th><th>
-<p>Title
+<p>Title</p>
 </th><th>
-<p>Performers
+<p>Performers</p>
 </th><th>
-<p>Record Label
+<p>Record Label</p>
 </th></tr>
 <tr>
 <td>Sleepers, Awake!</td>
@@ -431,7 +459,7 @@ mod tests {
     #[test]
     fn test_lookup_in_html_too_early() {
         let time = parse_eastern_time(Local::now(), "00:00").unwrap();
-        assert!(lookup_in_html(&Request { time }, HTML).is_err());
+        assert_matches!(lookup_in_html(&Request { time }, HTML), Err(_));
     }
 
     #[test]
