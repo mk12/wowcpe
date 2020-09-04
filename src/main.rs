@@ -8,7 +8,7 @@ use {
 
 fn main() {
     let matches = App::new("WOWCPE")
-        .version("0.1.0")
+        .version("0.2.0")
         .about("Show what is playing on WCPE - theclassicalstation.org")
         .arg(
             Arg::with_name("time")
