@@ -25,9 +25,10 @@ chrono = "0.4"
 chrono-tz = "0.5"
 clap = "2.33"
 curl = "0.4"
-encoding = "0.2"
+# encoding = "0.2"
 marksman_escape = "0.1"
-table-extract = "0.2.2"
+# table-extract = "0.2.2"
+scraper = "0.12"
 
 [dev-dependencies]
 assert_matches = "1.3"

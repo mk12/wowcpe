@@ -1,8 +1,7 @@
-extern crate chrono;
-extern crate wowcpe;
-
-use chrono::{Duration, Local};
-use wowcpe::Request;
+use {
+    chrono::{Duration, Local, TimeZone},
+    wowcpe::Request,
+};
 
 #[test]
 fn test_now() {
@@ -29,11 +28,11 @@ fn test_6_days_ago() {
 }
 
 #[test]
-fn test_1_week_ago() {
+fn test_long_ago() {
     let request = Request {
-        time: Local::now() - Duration::weeks(1),
+        time: Local.ymd(1950, 1, 1).and_hms(0, 0, 0),
     };
     let err = wowcpe::lookup(&request).unwrap_err();
 
-    assert!(err.to_string().contains("not available"));
+    assert!(err.to_string().contains("no data"));
 }

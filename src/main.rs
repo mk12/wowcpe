@@ -1,14 +1,10 @@
 // Copyright 2017 Mitchell Kember. Subject to the MIT License.
 
-extern crate chrono;
-extern crate clap;
-extern crate wowcpe;
-
-use chrono::{DateTime, Local, Timelike};
-use clap::{App, Arg};
-use std::io::Write;
-
-use wowcpe::{Request, Response};
+use {
+    chrono::{DateTime, Local, Timelike},
+    clap::{App, Arg},
+    wowcpe::{Request, Response},
+};
 
 fn main() {
     let matches = App::new("WOWCPE")
@@ -76,13 +72,12 @@ fn print_response(r: &Response) {
 }
 
 fn fail(message: &str) -> ! {
-    writeln!(std::io::stderr(), "{}", message).unwrap();
+    eprintln!("{}", message);
     std::process::exit(1);
 }
 
 fn invalid_arg(arg: &str) -> ! {
-    let mut stderr = std::io::stderr();
-    writeln!(&mut stderr, "{}: Invalid argument", arg).unwrap();
-    writeln!(&mut stderr, "For more information try --help").unwrap();
+    eprintln!("{}: Invalid argument", arg);
+    eprintln!("For more information try --help");
     std::process::exit(1)
 }
