@@ -226,56 +226,89 @@ fn parse_field(html: Option<String>) -> String {
 }
 
 fn get_program(start: DateTime<Local>) -> &'static str {
+    let allegro = "Allegro";
+    let as_you_like_it = "As You Like It";
+    let classical_cafe = "Classical Café";
+    let concert_hall = "Concert Hall";
+    let great_sacred_music = "Great Sacred Music";
+    let metropolitan_opera = "Metropolitan Opera";
+    let monday_night_at_the_symphony = "Monday Night at the Symphony";
+    let music_in_the_night = "Music in the Night";
+    let my_life_in_music = "My Life in Music";
+    let peaceful_reflections = "Peaceful Reflections";
+    let preview = "Preview!";
+    let renaissance_fare = "Renaissance Fare";
+    let rise_and_shine = "Rise and Shine";
+    let saturday_evening_request_program = "Saturday Evening Request Program";
+    let sing_for_joy = "Sing for Joy";
+    let sleepers_awake = "Sleepers, Awake!";
+    let thursday_night_opera_house = "Thursday Night Opera House";
+    let wavelengths = "Wavelengths";
+    let weekend_classics = "Weekend Classics";
+
     let start = start.with_timezone(&Eastern);
 
     // Specialty programs: https://theclassicalstation.org/listen/programs/
     match start.weekday() {
         Weekday::Mon => match start.hour() {
             19 => match start.day() {
-                1..=7 => return "My Life in Music",
-                8..=14 => return "Renaissance Fare",
+                1..=7 => return my_life_in_music,
+                8..=14 => return renaissance_fare,
                 _ => (),
             },
-            20..=21 => return "Monday Night at the Symphony",
+            20..=21 => return monday_night_at_the_symphony,
             _ => (),
         },
         Weekday::Thu => {
             if let 19..=21 = start.hour() {
-                return "Thursday Night Opera House";
+                return thursday_night_opera_house;
             }
         }
         Weekday::Sat => match (start.month(), start.hour()) {
             // NOTE: This is a guess. Sometimes starts earlier or ends later.
-            (12, 13..=17) => return "Metropolitan Opera",
-            (1..=5, 13..=17) => return "Metropolitan Opera",
-            _ => return MISSING,
+            (12, 13..=17) => return metropolitan_opera,
+            (1..=5, 13..=17) => return metropolitan_opera,
+            _ => (),
         },
         Weekday::Sun => match start.hour() {
-            7 if start.minute() >= 30 => return "Sing for Joy",
-            8..=11 => return "Great Sacred Music",
+            7 if start.minute() >= 30 => return sing_for_joy,
+            8..=11 => return great_sacred_music,
             17 => match start.day() {
-                7..=13 => return "My Life in Music",
-                14..=20 => return "Renaissance Fare",
+                7..=13 => return my_life_in_music,
+                14..=20 => return renaissance_fare,
                 _ => (),
             },
-            18..=20 => return "Preview",
-            21 => return "Wavelengths",
-            22..=23 => return "Peaceful Reflections",
-            _ => return MISSING,
+            18..=20 => return preview,
+            21 => return wavelengths,
+            22..=23 => return peaceful_reflections,
+            _ => (),
         },
         _ => (),
     }
 
     // Regular programs: https://theclassicalstation.org/about-us/
-    match start.hour() {
-        0..=5 => "Sleepers Awake",
-        6..=9 => "Rise and Shine",
-        10..=12 => "Classical Cafe",
-        13..=15 => "As You Like It",
-        16..=18 => "Allegro",
-        19..=21 => "Concert Hall",
-        22..=23 => "Music in the Night",
-        _ => unreachable!(),
+    match start.weekday() {
+        Weekday::Sat => match start.hour() {
+            0..=5 => sleepers_awake,
+            6..=17 => weekend_classics,
+            18..=23 => saturday_evening_request_program,
+            _ => unreachable!(),
+        },
+        Weekday::Sun => match start.hour() {
+            0..=5 => sleepers_awake,
+            6..=17 => weekend_classics,
+            _ => unreachable!(),
+        },
+        _ => match start.hour() {
+            0..=5 => sleepers_awake,
+            6..=9 => rise_and_shine,
+            10..=12 => classical_cafe,
+            13..=15 => as_you_like_it,
+            16..=18 => allegro,
+            19..=21 => concert_hall,
+            22..=23 => music_in_the_night,
+            _ => unreachable!(),
+        },
     }
 }
 
