@@ -194,7 +194,7 @@ fn lookup_in_html(request: &Request, html: &str) -> Result<Response> {
     }
 
     Ok(Response {
-        program: get_program(start_time),
+        program: get_program(request.time),
         start_time,
         end_time,
         composer: parse_field(composer),
@@ -225,7 +225,7 @@ fn parse_field(html: Option<String>) -> String {
     }
 }
 
-fn get_program(start: DateTime<Local>) -> &'static str {
+fn get_program(time: DateTime<Local>) -> &'static str {
     let allegro = "Allegro";
     let as_you_like_it = "As You Like It";
     let classical_cafe = "Classical Café";
@@ -246,12 +246,12 @@ fn get_program(start: DateTime<Local>) -> &'static str {
     let wavelengths = "Wavelengths";
     let weekend_classics = "Weekend Classics";
 
-    let start = start.with_timezone(&Eastern);
+    let time = time.with_timezone(&Eastern);
 
     // Specialty programs: https://theclassicalstation.org/listen/programs/
-    match start.weekday() {
-        Weekday::Mon => match start.hour() {
-            19 => match start.day() {
+    match time.weekday() {
+        Weekday::Mon => match time.hour() {
+            19 => match time.day() {
                 1..=7 => return my_life_in_music,
                 8..=14 => return renaissance_fare,
                 _ => (),
@@ -260,20 +260,20 @@ fn get_program(start: DateTime<Local>) -> &'static str {
             _ => (),
         },
         Weekday::Thu => {
-            if let 19..=21 = start.hour() {
+            if let 19..=21 = time.hour() {
                 return thursday_night_opera_house;
             }
         }
-        Weekday::Sat => match (start.month(), start.hour()) {
+        Weekday::Sat => match (time.month(), time.hour()) {
             // NOTE: This is a guess. Sometimes starts earlier or ends later.
             (12, 13..=17) => return metropolitan_opera,
             (1..=5, 13..=17) => return metropolitan_opera,
             _ => (),
         },
-        Weekday::Sun => match start.hour() {
-            7 if start.minute() >= 30 => return sing_for_joy,
+        Weekday::Sun => match time.hour() {
+            7 if time.minute() >= 30 => return sing_for_joy,
             8..=11 => return great_sacred_music,
-            17 => match start.day() {
+            17 => match time.day() {
                 7..=13 => return my_life_in_music,
                 14..=20 => return renaissance_fare,
                 _ => (),
@@ -287,19 +287,19 @@ fn get_program(start: DateTime<Local>) -> &'static str {
     }
 
     // Regular programs: https://theclassicalstation.org/about-us/
-    match start.weekday() {
-        Weekday::Sat => match start.hour() {
+    match time.weekday() {
+        Weekday::Sat => match time.hour() {
             0..=5 => sleepers_awake,
             6..=17 => weekend_classics,
             18..=23 => saturday_evening_request_program,
             _ => unreachable!(),
         },
-        Weekday::Sun => match start.hour() {
+        Weekday::Sun => match time.hour() {
             0..=5 => sleepers_awake,
             6..=17 => weekend_classics,
             _ => unreachable!(),
         },
-        _ => match start.hour() {
+        _ => match time.hour() {
             0..=5 => sleepers_awake,
             6..=9 => rise_and_shine,
             10..=12 => classical_cafe,
