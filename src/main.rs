@@ -37,7 +37,16 @@ fn current_time() -> DateTime<Local> {
 }
 
 fn parse_time(input: &str) -> Option<DateTime<Local>> {
-    let input = input.trim();
+    let input: &str = &input.trim().to_lowercase();
+    let (input, hour_offset) = if input.len() >= 2 {
+        match input.split_at(input.len() - 2) {
+            (x, "am") => (x, 0),
+            (x, "pm") => (x, 12),
+            _ => (input, 0),
+        }
+    } else {
+        (input, 0)
+    };
     let (hour, minute): (u32, u32) = if let Some(index) = input.find(':') {
         let (hh, colon_mm) = input.split_at(index);
         let mm = &colon_mm[1..];
@@ -53,7 +62,7 @@ fn parse_time(input: &str) -> Option<DateTime<Local>> {
     };
 
     Local::now()
-        .with_hour(hour)
+        .with_hour(hour + hour_offset)
         .and_then(|t| t.with_minute(minute))
         .and_then(|t| t.with_nanosecond(0))
 }
