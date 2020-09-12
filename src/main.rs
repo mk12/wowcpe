@@ -3,6 +3,7 @@
 use {
     chrono::{DateTime, Local, Timelike},
     clap::{App, Arg},
+    std::path::PathBuf,
     wowcpe::{Request, Response},
 };
 
@@ -15,8 +16,15 @@ fn main() {
                 .short("t")
                 .long("time")
                 .value_name("HH:MM")
-                .help("Look up a specific time today")
-                .takes_value(true),
+                .takes_value(true)
+                .help("Look up a specific time today"),
+        )
+        .arg(
+            Arg::with_name("no_cache")
+                .short("n")
+                .long("--no-cache")
+                .takes_value(false)
+                .help("Disable caching"),
         )
         .get_matches();
 
@@ -26,10 +34,23 @@ fn main() {
         current_time()
     };
 
-    match wowcpe::lookup(&Request { time }) {
+    let request = &Request { time };
+    let cache = cache_file_path();
+    let result = match (cache, matches.is_present("no_cache")) {
+        (Some(path), false) => wowcpe::lookup_cached(request, &path),
+        _ => wowcpe::lookup(request),
+    };
+    match result {
         Ok(response) => print_response(&response),
         Err(err) => fail(&err.to_string()),
     }
+}
+
+fn cache_file_path() -> Option<PathBuf> {
+    xdg::BaseDirectories::with_prefix("wowcpe")
+        .ok()?
+        .place_cache_file("playlist.html")
+        .ok()
 }
 
 fn current_time() -> DateTime<Local> {
