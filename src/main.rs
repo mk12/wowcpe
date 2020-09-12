@@ -9,7 +9,7 @@ use {
 
 fn main() {
     let matches = App::new("WOWCPE")
-        .version("0.2.1")
+        .version("0.2.2")
         .about("Show what is playing on WCPE - theclassicalstation.org")
         .arg(
             Arg::with_name("time")
