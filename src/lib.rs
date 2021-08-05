@@ -107,12 +107,8 @@ pub fn lookup(request: &Request) -> Result<Response> {
 /// Otherwise, uses `curl` as normal and saves the result in `cache_file`.
 pub fn lookup_cached(request: &Request, cache_file: &Path) -> Result<Response> {
     validate_request(request, Local::now())?;
-    let header = request
-        .time
-        .with_timezone(&Eastern)
-        .date()
-        .format("%Y-%m-%d");
-    let header = format!("<!-- WOWCPE {} -->", header);
+    let url = get_url(request.time);
+    let header = format!("<!-- {} -->", url);
     if let Ok(cache) = std::fs::read_to_string(cache_file) {
         if let Some(cache_header) = cache.lines().next() {
             if cache_header == header {
@@ -121,7 +117,7 @@ pub fn lookup_cached(request: &Request, cache_file: &Path) -> Result<Response> {
         }
     }
 
-    let html = download(&get_url(request.time))?;
+    let html = download(&url)?;
     if let Ok(mut f) = std::fs::File::create(cache_file) {
         let _ = write!(f, "{}\n", header);
         let _ = f.write_all(html.as_bytes());
@@ -149,7 +145,7 @@ fn get_url(time: DateTime<Local>) -> String {
     // 301 Moved Permanently response.
     format!(
         "https://theclassicalstation.org/listen/playlist/?date={}",
-        time.format("%Y-%m-%d")
+        time.with_timezone(&Eastern).format("%Y-%m-%d")
     )
 }
 
